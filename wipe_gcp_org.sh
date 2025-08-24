@@ -1,80 +1,90 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# === CONFIG: set your org ID and (optional) known project name prefix(es) ===
-ORG_ID="496460677641"
+# Usage: ./nuke-org.sh <ORG_ID> [--no-dry-run]
+: "${1:?Usage: $0 <ORG_ID> [--no-dry-run]}"
+ORG_ID="$1"
+NO_DRY_RUN="${2:-}"
 
-# Safety: show context
+# Safety: refuse if not explicitly confirmed with exact org id
 ME=$(gcloud config get-value account 2>/dev/null || true)
 ACTIVE_PROJECT=$(gcloud config get-value project 2>/dev/null || true)
 echo "Logged in as     : ${ME:-<none>}"
 echo "Active gcloud prj: ${ACTIVE_PROJECT:-<none>}"
 echo "Target ORG_ID    : ${ORG_ID}"
-echo
-read -r -p "This will delete org policy, ALL projects under folders in org ${ORG_ID}, and the folders themselves. Continue? [y/N] " ans
-[[ "${ans:-N}" == "y" || "${ans:-N}" == "Y" ]] || { echo "Aborted."; exit 1; }
 
-# 1) Remove org-level region lock policy if present
-echo "==> Deleting org policy constraints/gcp.resourceLocations (if exists)..."
-gcloud org-policies delete constraints/gcp.resourceLocations \
-  --organization="${ORG_ID}" \
-  --quiet || true
+# Verify we can see this org
+if ! gcloud organizations list --format='value(ID)' | grep -qx "${ORG_ID}"; then
+  echo "ERROR: You do not have visibility on org ${ORG_ID} with current credentials."
+  exit 1
+fi
 
-# 2) Find folders under the org
-echo "==> Listing folders under org..."
-FOLDERS=$(gcloud resource-manager folders list \
-  --organization="${ORG_ID}" \
-  --format="value(name)")
-echo "${FOLDERS:-<none>}"
-
-# 3) For each folder, delete all projects under it
-echo "==> Deleting projects under each folder (this moves projects into PENDING DELETE for ~30 days)..."
+# Summarize what would be deleted
+FOLDERS=$(gcloud resource-manager folders list --organization="${ORG_ID}" --format="value(name)")
+PRJ_UNDER_FOLDERS=0
 if [[ -n "${FOLDERS}" ]]; then
-  while IFS= read -r F; do
+  while read -r F; do
     F_ID="${F#folders/}"
-    echo "  -> Folder ${F} : projects:"
+    CNT=$(gcloud projects list --filter="parent.type=folder parent.id=${F_ID}" --format="value(projectId)" | wc -l | tr -d ' ')
+    PRJ_UNDER_FOLDERS=$((PRJ_UNDER_FOLDERS + CNT))
+  done <<< "${FOLDERS}"
+fi
+PRJS_ORG=$(gcloud projects list --filter="parent.type=organization parent.id=${ORG_ID}" --format="value(projectId)")
+PRJ_DIRECT_COUNT=$(printf "%s\n" "${PRJS_ORG}" | sed '/^$/d' | wc -l | tr -d ' ')
+
+echo
+echo "Summary:"
+echo "- Folders: $(printf "%s\n" "${FOLDERS}" | sed '/^$/d' | wc -l | tr -d ' ')"
+echo "- Projects under folders: ${PRJ_UNDER_FOLDERS}"
+echo "- Projects directly under org: ${PRJ_DIRECT_COUNT}"
+echo "- Will also remove org-policy constraints/gcp.resourceLocations (if present)."
+echo
+read -r -p "Type the ORG_ID (${ORG_ID}) to confirm: " confirm
+[[ "${confirm}" == "${ORG_ID}" ]] || { echo "Aborted."; exit 1; }
+
+DRY_RUN=1
+if [[ "${NO_DRY_RUN}" == "--no-dry-run" ]]; then DRY_RUN=0; fi
+[[ $DRY_RUN -eq 1 ]] && echo "RUN MODE: DRY RUN (no deletions will occur)"
+
+run() { echo "+ $*"; [[ $DRY_RUN -eq 0 ]] && eval "$@"; }
+
+# 1) Delete org policy
+run gcloud org-policies delete constraints/gcp.resourceLocations --organization="${ORG_ID}" --quiet || true
+
+# 2) Delete projects under folders
+if [[ -n "${FOLDERS}" ]]; then
+  while read -r F; do
+    F_ID="${F#folders/}"
     PRJS=$(gcloud projects list --filter="parent.type=folder parent.id=${F_ID}" --format="value(projectId)")
-    if [[ -z "${PRJS}" ]]; then
-      echo "     (none)"
-      continue
-    fi
-    while IFS= read -r P; do
-      echo "     Deleting project: ${P}"
-      gcloud projects delete "${P}" --quiet || true
+    while read -r P; do
+      [[ -z "$P" ]] && continue
+      # Example denylist: skip critical projects by ID
+      case "$P" in
+        billing-*|identity-* ) echo "Skipping protected project: $P"; continue;;
+      esac
+      run gcloud projects delete "$P" --quiet
+      [[ $DRY_RUN -eq 0 ]] && sleep 1
     done <<< "${PRJS}"
   done <<< "${FOLDERS}"
-else
-  echo "No folders found under org."
 fi
 
-# 4) Also delete any projects that are directly under the org (no folder parent)
-echo "==> Deleting projects directly under org (if any)..."
-PRJS_ORG=$(gcloud projects list --filter="parent.type=organization parent.id=${ORG_ID}" --format="value(projectId)")
-if [[ -n "${PRJS_ORG}" ]]; then
-  while IFS= read -r P; do
-    echo "   Deleting project: ${P}"
-    gcloud projects delete "${P}" --quiet || true
-  done <<< "${PRJS_ORG}"
-else
-  echo "   (none)"
-fi
+# 3) Delete projects directly under org
+while read -r P; do
+  [[ -z "$P" ]] && continue
+  case "$P" in
+    billing-*|identity-* ) echo "Skipping protected project: $P"; continue;;
+  esac
+  run gcloud projects delete "$P" --quiet
+  [[ $DRY_RUN -eq 0 ]] && sleep 1
+done <<< "${PRJS_ORG}"
 
-# 5) Delete folders (must be empty first)
-# Delete children first: try to delete all; failures are ignored if already gone
-echo "==> Deleting folders..."
+# 4) Delete folders (must be empty)
 if [[ -n "${FOLDERS}" ]]; then
-  # Sort longest names last/first doesn’t matter much with flat tree, but we’ll just loop twice
-  while IFS= read -r F; do
-    echo "   Deleting ${F}"
-    gcloud resource-manager folders delete "${F}" --quiet || true
+  while read -r F; do
+    [[ -z "$F" ]] && continue
+    run gcloud resource-manager folders delete "$F" --quiet || true
+    [[ $DRY_RUN -eq 0 ]] && sleep 1
   done <<< "${FOLDERS}"
-else
-  echo "   (none)"
 fi
 
-echo "==> Done."
-echo
-echo "Notes:"
-echo "- Project deletion is soft for ~30 days (PENDING DELETE). You can restore during that window."
-echo "- The organization node itself cannot be deleted."
-
+echo "Done. Note: project deletion is soft (~30 days)."
