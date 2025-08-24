@@ -48,23 +48,24 @@ Each folder contains:
 
 **Scalable Project Structure**
 
-* Creates standardized projects for **Prod, PreProd, Dev, and Shared** under correct folders.
-* Ensures isolation, least-privilege IAM, and centralized infra.
-* *Screenshot:* `./screenshots/organization_structure_gcp.png`   
-* *Screenshot:* `./screenshots/organization_hierarchy_GCP.png`
+- Creates standardized projects for **Prod, PreProd, Dev, and Shared** under correct folders.  
+- Ensures isolation, least-privilege IAM, and centralized infra.
+
+![GCP — Org Structure](./screenshots/organization_structure_gcp.png)  
+![GCP — Org Hierarchy](./screenshots/organization_hierarchy_GCP.png)
 
 **Region Locking**
 
-* Applies **org-level policies** restricting deployments to approved regions.
-* Supports compliance with **GDPR, HIPAA, PCI** and reduces attack surface.
-* *Screenshot:* `./screenshots/gcp_region_locking.png`
+- Applies **org-level policies** restricting deployments to approved regions.
+- Supports compliance with **GDPR, HIPAA, PCI** and reduces attack surface.
+
 
 **Centralizing Users**
 
-* Automates onboarding of Workspace users and groups.
-* Example: `payments-team@domain` with Jane Doe + John Smith.
-* Group assigned `roles/viewer` at project level.
-* *Screenshot:* `./screenshots/gcp_centralizing_users.png`
+- Automates onboarding of Workspace users and groups.
+- Example: `payments-team@domain` with Jane Doe + John Smith.
+= Group assigned `roles/viewer` at project level.
+
 
 ---
 
@@ -72,20 +73,20 @@ Each folder contains:
 
 **Scalable Account Structure**
 
-* Builds **Prod, PreProd, Dev, Shared** accounts under a team-specific OU.
-* Supports workload isolation and strong SCP enforcement.
-* *Screenshot:* `./screenshots/organization_hierarchy_aws.png`   
-* *Screenshot:* `./screenshots/organization_structure_aws.png`
+- Builds **Prod, PreProd, Dev, Shared** accounts under a team-specific OU.
+- Supports workload isolation and strong SCP enforcement.
+![AWS — Org Hierarchy](./screenshots/organization_hierarchy_aws.png)  
+![AWS — Org Structure](./screenshots/organization_structure_aws.png)
 
 **Region Locking**
 
-* Enforces **Service Control Policies (SCPs)** to allow only approved AWS regions.
-* Maintains exception list for global services (e.g., CloudFront in `us-east-1`).
+- Enforces **Service Control Policies (SCPs)** to allow only approved AWS regions.
+- Maintains exception list for global services (e.g., CloudFront in `us-east-1`).
 
 **Centralizing Users**
 
-* All IAM users exist in a dedicated **Auth account**.
-* Cross-account roles grant **least-privilege access** to workloads.
+- All IAM users exist in a dedicated **Auth account**.
+- Cross-account roles grant **least-privilege access** to workloads.
 
 ---
 
@@ -93,20 +94,20 @@ Each folder contains:
 
 **Scalable Subscription Structure**
 
-* Creates **Prod, PreProd, Dev, Shared** subscriptions under Mgmt Groups.
-* Organizes via **Sandbox, Platform, Landing Zones** hierarchy.
-* *Screenshot:* `./screenshots/organization_structure_azure.png`   
-* *Screenshot:* `./screenshots/organization_hierarchy_azure.png`
+- Creates **Prod, PreProd, Dev, Shared** subscriptions under Mgmt Groups.
+- Organizes via **Sandbox, Platform, Landing Zones** hierarchy.
+![Azure — Org Structure](./screenshots/organization_structure_azure.png)
+![Azure — Org Hierarchy](./screenshots/organization_hierarchy_azure.png)
 
 **Region Locking**
 
-* Uses **Azure Policy** to enforce region restrictions.
-* Built-in exceptions support global services.
+- Uses **Azure Policy** to enforce region restrictions.
+- Built-in exceptions support global services.
 
 **Centralizing Users**
 
-* Onboards Azure AD users via Terraform with **random initial passwords**.
-* Users are grouped for role assignment (Reader, Contributor, etc.).
+- Onboards Azure AD users via Terraform with **random initial passwords**.
+- Users are grouped for role assignment (Reader, Contributor, etc.).
 
 ---
 
